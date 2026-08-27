@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API de Contatos — Documentação</title>
+<style>
+  :root {
+    --azul: #12395f; --azul-claro: #1e5a94; --fundo: #f4f6f8; --papel: #fff;
+    --borda: #dfe4ea; --texto: #1c2733; --suave: #667485;
+    --verde: #1e7a4a; --vermelho: #c0392b; --amarelo: #b8860b;
+    --codigo-fundo: #0f2233;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fundo); color: var(--texto);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .institucional {
+    display: flex; align-items: center; gap: 14px; background: #fff;
+    padding: 10px 16px; border-bottom: 1px solid var(--borda);
+  }
+  .institucional img { height: 44px; width: auto; display: block; }
+  .institucional strong {
+    display: block; font-size: .9rem; letter-spacing: 2.5px; color: var(--azul); font-weight: 700;
+  }
+  .institucional span { display: block; font-size: .72rem; color: var(--suave); }
+
+  header.titulo { background: var(--azul); color: #fff; padding: 26px 20px; }
+  header.titulo div { max-width: 860px; margin: 0 auto; }
+  header.titulo h1 { margin: 0 0 4px; font-size: 1.5rem; }
+  header.titulo p { margin: 0; opacity: .85; font-size: .92rem; }
+
+  main { max-width: 860px; margin: 0 auto; padding: 24px 20px 60px; }
+  section { background: var(--papel); border: 1px solid var(--borda); border-radius: 12px; padding: 22px; margin-bottom: 18px; }
+  h2 { font-size: 1.15rem; margin: 0 0 14px; color: var(--azul); }
+  h3 { font-size: .95rem; margin: 22px 0 8px; }
+  h3:first-of-type { margin-top: 0; }
+  p { margin: 0 0 12px; }
+  ul { margin: 0 0 12px; padding-left: 20px; }
+  li { margin-bottom: 5px; }
+
+  code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .86em;
+         background: #eef2f6; padding: 2px 6px; border-radius: 4px; color: var(--azul); }
+  pre { background: var(--codigo-fundo); color: #e6edf3; padding: 15px; border-radius: 8px;
+        overflow-x: auto; font-size: .82rem; line-height: 1.55; margin: 0 0 14px; }
+  pre code { background: none; color: inherit; padding: 0; font-size: 1em; }
+  .c { color: #7d8ea3; }  .s { color: #9ecbff; }  .k { color: #ffab70; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; margin-bottom: 14px; display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--borda); vertical-align: top; }
+  th { background: #f7f9fb; font-size: .78rem; text-transform: uppercase; letter-spacing: .4px; color: var(--suave); }
+  td code { white-space: nowrap; }
+
+  .rota { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+          background: #f7f9fb; border: 1px solid var(--borda); border-radius: 8px;
+          padding: 10px 12px; margin-bottom: 10px; }
+  .verbo { background: var(--verde); color: #fff; font-size: .72rem; font-weight: 700;
+           padding: 3px 9px; border-radius: 4px; letter-spacing: .5px; }
+  .rota code { background: none; font-size: .92rem; color: var(--texto); padding: 0; }
+  .rota span.desc { color: var(--suave); font-size: .84rem; }
+
+  .aviso { border-left: 4px solid var(--amarelo); background: #fff9e8; padding: 12px 14px;
+           border-radius: 0 8px 8px 0; margin: 0 0 14px; font-size: .89rem; }
+  .aviso.grave { border-left-color: var(--vermelho); background: #fdecea; }
+  .aviso.ok { border-left-color: var(--verde); background: #e9f6ef; }
+  .aviso p:last-child { margin-bottom: 0; }
+
+  .sumario { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+  .sumario a { display: block; padding: 10px 12px; background: #f7f9fb; border: 1px solid var(--borda);
+               border-radius: 8px; text-decoration: none; color: var(--azul); font-weight: 600; font-size: .88rem; }
+  .sumario a:hover { background: #eef4fa; }
+  .sumario a small { display: block; font-weight: 400; color: var(--suave); font-size: .78rem; }
+</style>
+</head>
+<body>
+
+<div class="institucional" id="institucional" hidden>
+  <img src="/brasao.svg" alt="" class="brasao">
+  <div>
+    <strong id="orgao"></strong>
+    <span id="gabinete"></span>
+  </div>
+</div>
+
+<header class="titulo">
+  <div>
+    <h1>API de Contatos</h1>
+    <p>Consulta e webhooks para integração com outros sistemas — v1</p>
+  </div>
+</header>
+
+<main>
+
+<section>
+  <div class="sumario">
+    <a href="#comecar">Como começar<small>token e primeira chamada</small></a>
+    <a href="#consulta">Consulta<small>listar e buscar contatos</small></a>
+    <a href="#modelo">Modelo de dados<small>campos e valores possíveis</small></a>
+    <a href="#webhooks">Webhooks<small>receber avisos de mudança</small></a>
+    <a href="#assinatura">Validar a assinatura<small>Node, Python e PHP</small></a>
+    <a href="#erros">Erros e limites<small>códigos e paginação</small></a>
+  </div>
+</section>
+
+<section id="comecar">
+  <h2>Como começar</h2>
+
+  <p>A API é <strong>somente leitura</strong>. Ela permite consultar os contatos digitalizados
+  no sistema e receber avisos automáticos quando algo muda. Não há nenhum endpoint
+  de escrita: nenhum sistema externo cria, altera ou apaga dados.</p>
+
+  <h3>1. Peça um token</h3>
+  <p>Os tokens são gerados pela administração, na aba <strong>API</strong> do sistema.
+  Cada sistema integrado deve ter o seu, para que o acesso possa ser revogado
+  individualmente. O token aparece <strong>uma única vez</strong>, no momento da criação —
+  guarde-o em cofre de segredos, nunca no código-fonte.</p>
+
+  <h3>2. Endereço base</h3>
+  <pre><code class="base">https://SEU-DOMINIO/v1</code></pre>
+
+  <h3>3. Autentique cada chamada</h3>
+  <p>Envie o token no cabeçalho <code>Authorization</code>, no formato <code>Bearer</code>:</p>
+  <pre><code><span class="c"># primeira chamada: confirma que o token funciona</span>
+curl -H <span class="s">"Authorization: Bearer cgab_seu_token_aqui"</span> \
+     <span class="base-inline">https://SEU-DOMINIO</span>/v1/estatisticas</code></pre>
+
+  <div class="aviso grave">
+    <p><strong>Os dados são pessoais de terceiros.</strong> Nomes, telefones, e-mails e
+    endereços coletados em eventos públicos estão sujeitos à LGPD. Ao integrar, você
+    assume as obrigações de quem trata esses dados: finalidade declarada, acesso
+    restrito, transmissão em HTTPS e prazo de guarda definido. Não replique essa base
+    para sistemas sem controle de acesso.</p>
+  </div>
+</section>
+
+<section id="consulta">
+  <h2>Consulta</h2>
+
+  <div class="rota">
+    <span class="verbo">GET</span><code>/v1/contatos</code>
+    <span class="desc">lista contatos, com filtros e paginação</span>
+  </div>
+  <div class="rota">
+    <span class="verbo">GET</span><code>/v1/contatos/{id}</code>
+    <span class="desc">um contato específico</span>
+  </div>
+  <div class="rota">
+    <span class="verbo">GET</span><code>/v1/estatisticas</code>
+    <span class="desc">totais por setor, prioridade, segmento e situação</span>
+  </div>
+
+  <h3>Parâmetros de <code>/v1/contatos</code></h3>
+  <table>
+    <thead><tr><th>Parâmetro</th><th>Tipo</th><th>Descrição</th></tr></thead>
+    <tbody>
+      <tr><td><code>q</code></td><td>texto</td><td>Busca livre em nome, cargo, empresa, sigla, e-mail, telefone, cidade, temas e evento. <strong>Ignora acentos</strong>: <code>q=jose</code> encontra "José".</td></tr>
+      <tr><td><code>setor</code></td><td>enum</td><td><code>publico</code>, <code>privado</code>, <code>terceiro_setor</code>, <code>academico</code>, <code>midia</code>, <code>outro</code></td></tr>
+      <tr><td><code>segmento</code></td><td>enum</td><td>Área de atuação. Lista completa em <a href="#modelo">Modelo de dados</a>.</td></tr>
+      <tr><td><code>prioridade</code></td><td>enum</td><td><code>alta</code>, <code>media</code>, <code>baixa</code></td></tr>
+      <tr><td><code>status</code></td><td>enum</td><td><code>novo</code>, <code>revisado</code>, <code>encaminhado</code>, <code>arquivado</code></td></tr>
+      <tr><td><code>evento</code></td><td>texto</td><td>Filtra pelo evento de origem (busca parcial).</td></tr>
+      <tr><td><code>desde</code></td><td>data ISO</td><td>Só contatos criados a partir desta data. Ex.: <code>2026-08-01</code></td></tr>
+      <tr><td><code>limite</code></td><td>inteiro</td><td>Itens por página. Padrão 50, máximo 200.</td></tr>
+      <tr><td><code>offset</code></td><td>inteiro</td><td>Quantos pular. Use com <code>total</code> para paginar.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Exemplo</h3>
+  <pre><code><span class="c"># contatos de prioridade alta do agronegócio, criados em agosto</span>
+curl -H <span class="s">"Authorization: Bearer $TOKEN"</span> \
+  <span class="s">"<span class="base-inline">https://SEU-DOMINIO</span>/v1/contatos?prioridade=alta&segmento=agronegocio&desde=2026-08-01&limite=20"</span></code></pre>
+
+  <pre><code>{
+  <span class="k">"total"</span>: 37,
+  <span class="k">"limite"</span>: 20,
+  <span class="k">"offset"</span>: 0,
+  <span class="k">"contatos"</span>: [ <span class="c">/* ver Modelo de dados */</span> ]
+}</code></pre>
+
+  <div class="aviso">
+    <p><code>total</code> é a contagem de <em>todos</em> os contatos que casam com o filtro,
+    não o tamanho desta página. Para percorrer tudo, incremente <code>offset</code> de
+    <code>limite</code> em <code>limite</code> enquanto <code>offset &lt; total</code>.</p>
+  </div>
+</section>
+
+<section id="modelo">
+  <h2>Modelo de dados</h2>
+
+  <p>Campos sem valor vêm como <code>null</code>, nunca como string vazia. Listas vêm
+  sempre como array, possivelmente vazio.</p>
+
+  <pre><code>{
+  <span class="k">"id"</span>: <span class="s">"62a64bbe-8f82-473a-b14f-69a3e4548de8"</span>,
+  <span class="k">"nome"</span>: <span class="s">"Ricardo Salgueiro Neto"</span>,
+  <span class="k">"cargo"</span>: <span class="s">"Diretor de Relações Institucionais"</span>,
+  <span class="k">"empresa"</span>: <span class="s">"Conselho Nacional de Desenvolvimento Científico e Tecnológico"</span>,
+  <span class="k">"sigla"</span>: <span class="s">"CNPq"</span>,
+  <span class="k">"departamento"</span>: <span class="s">null</span>,
+  <span class="k">"contato"</span>: {
+    <span class="k">"telefone"</span>: <span class="s">"+55 (61) 3315-0000"</span>,
+    <span class="k">"celular"</span>: <span class="s">"+55 (61) 99145-2277"</span>,
+    <span class="k">"email"</span>: <span class="s">"ricardo.neto@exemplo.br"</span>,
+    <span class="k">"email_secundario"</span>: <span class="s">null</span>,
+    <span class="k">"site"</span>: <span class="s">"exemplo.br"</span>
+  },
+  <span class="k">"endereco"</span>: {
+    <span class="k">"logradouro"</span>: <span class="s">"SBN Quadra 2, Bloco A"</span>,
+    <span class="k">"cidade"</span>: <span class="s">"Brasília"</span>, <span class="k">"uf"</span>: <span class="s">"DF"</span>, <span class="k">"cep"</span>: <span class="s">"70040-020"</span>
+  },
+  <span class="k">"redes"</span>: {
+    <span class="k">"linkedin"</span>: <span class="s">"linkedin.com/in/exemplo"</span>,
+    <span class="k">"instagram"</span>: <span class="s">null</span>, <span class="k">"facebook"</span>: <span class="s">null</span>, <span class="k">"twitter"</span>: <span class="s">null</span>,
+    <span class="k">"outras"</span>: [<span class="s">"Telegram: @exemplo"</span>]
+  },
+  <span class="k">"classificacao"</span>: {
+    <span class="k">"setor"</span>: <span class="s">"publico"</span>,
+    <span class="k">"segmento"</span>: <span class="s">"ciencia_pesquisa"</span>,
+    <span class="k">"prioridade"</span>: <span class="s">"alta"</span>,
+    <span class="k">"temas"</span>: [<span class="s">"fomento à pesquisa"</span>, <span class="s">"inovação"</span>],
+    <span class="k">"resumo"</span>: <span class="s">"Diretor do CNPq, interlocutor para pautas de C&amp;T."</span>,
+    <span class="k">"confianca_leitura"</span>: 0.97
+  },
+  <span class="k">"origem"</span>: {
+    <span class="k">"evento"</span>: <span class="s">"Audiência pública sobre inovação"</span>,
+    <span class="k">"local"</span>: <span class="s">"Senado Federal, Brasília"</span>,
+    <span class="k">"data_captura"</span>: <span class="s">"2026-08-26"</span>,
+    <span class="k">"registrado_por"</span>: <span class="s">"Maria Souza"</span>
+  },
+  <span class="k">"status"</span>: <span class="s">"revisado"</span>,
+  <span class="k">"observacoes"</span>: <span class="s">null</span>,
+  <span class="k">"tem_foto"</span>: true,
+  <span class="k">"tem_verso"</span>: false,
+  <span class="k">"criado_em"</span>: <span class="s">"2026-08-26T19:15:21.929Z"</span>,
+  <span class="k">"atualizado_em"</span>: <span class="s">"2026-08-26T19:15:21.929Z"</span>
+}</code></pre>
+
+  <h3>Sobre <code>empresa</code> e <code>sigla</code></h3>
+  <p>Instituições conhecidas por sigla são gravadas nos dois campos: <code>empresa</code>
+  traz o nome por extenso e <code>sigla</code> traz a sigla. Se o cartão trouxer apenas a
+  sigla e não for possível expandi-la com segurança, os dois campos trazem a sigla.
+  A busca por <code>q</code> cobre os dois — procurar por "CNPq" encontra o registro
+  mesmo que o cartão só tivesse o nome por extenso.</p>
+
+  <h3>Sobre <code>confianca_leitura</code></h3>
+  <p>Número de 0 a 1 informado pela IA que leu o cartão, ou <code>null</code>. Todo contato
+  disponível na API já passou por conferência humana, mas esse valor ajuda a priorizar
+  auditorias. Abaixo de 0,7 vale reconferir.</p>
+
+  <h3>Valores de <code>segmento</code></h3>
+  <p><code>agronegocio</code>, <code>saude</code>, <code>educacao</code>, <code>infraestrutura</code>,
+  <code>transporte</code>, <code>energia</code>, <code>meio_ambiente</code>, <code>seguranca_publica</code>,
+  <code>tecnologia</code>, <code>telecomunicacoes</code>, <code>industria</code>, <code>comercio</code>,
+  <code>servicos</code>, <code>financeiro</code>, <code>juridico</code>, <code>construcao</code>,
+  <code>turismo</code>, <code>cultura</code>, <code>esporte</code>, <code>assistencia_social</code>,
+  <code>ciencia_pesquisa</code>, <code>comunicacao_imprensa</code>, <code>politica_governo</code>,
+  <code>religioso</code>, <code>outro</code>.</p>
+
+  <div class="aviso">
+    <p>As fotos dos cartões <strong>não são expostas</strong> pela API. <code>tem_foto</code> e
+    <code>tem_verso</code> apenas informam que existem, para o caso de alguém precisar
+    solicitá-las à administração.</p>
+  </div>
+</section>
+
+<section id="webhooks">
+  <h2>Webhooks</h2>
+
+  <p>Em vez de ficar consultando a API em busca de novidades, cadastre uma URL e nós
+  avisamos. A administração cadastra o webhook na aba <strong>API</strong> do sistema, informando
+  o nome, a URL e quais eventos interessam.</p>
+
+  <h3>Eventos</h3>
+  <table>
+    <thead><tr><th>Evento</th><th>Quando dispara</th></tr></thead>
+    <tbody>
+      <tr><td><code>contato.criado</code></td><td>Um cartão foi conferido e virou contato definitivo.</td></tr>
+      <tr><td><code>contato.atualizado</code></td><td>Algum campo de um contato existente foi alterado.</td></tr>
+      <tr><td><code>contato.excluido</code></td><td>Um contato foi apagado. O corpo traz só <code>id</code> e <code>nome</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>O que chega na sua URL</h3>
+  <p>Um <code>POST</code> com <code>content-type: application/json</code> e estes cabeçalhos:</p>
+  <table>
+    <thead><tr><th>Cabeçalho</th><th>Conteúdo</th></tr></thead>
+    <tbody>
+      <tr><td><code>x-evento</code></td><td>Nome do evento, ex.: <code>contato.criado</code></td></tr>
+      <tr><td><code>x-entrega-id</code></td><td>UUID único desta entrega. Use para descartar duplicatas.</td></tr>
+      <tr><td><code>x-assinatura</code></td><td><code>sha256=&lt;hex&gt;</code> — HMAC-SHA256 do corpo. <strong>Sempre valide.</strong></td></tr>
+    </tbody>
+  </table>
+
+  <pre><code>{
+  <span class="k">"evento"</span>: <span class="s">"contato.criado"</span>,
+  <span class="k">"enviado_em"</span>: <span class="s">"2026-08-26T19:15:22.100Z"</span>,
+  <span class="k">"dados"</span>: { <span class="c">/* mesmo formato de /v1/contatos/{id} */</span> }
+}</code></pre>
+
+  <h3>Regras de entrega</h3>
+  <ul>
+    <li>Responda <strong>2xx</strong> em até <strong>10 segundos</strong>. Fora disso, contamos como falha.</li>
+    <li>Responda rápido e processe depois: enfileire internamente em vez de trabalhar antes de responder.</li>
+    <li>Após <strong>10 falhas seguidas</strong> o webhook é desativado automaticamente e precisa
+        ser reativado pela administração. Uma entrega bem-sucedida zera o contador.</li>
+    <li>Não há reenvio automático de uma entrega isolada que falhou. Se perder um evento,
+        reconcilie pela API usando o parâmetro <code>desde</code>.</li>
+    <li>A URL precisa ser <code>https://</code>. Dado pessoal não trafega em HTTP.</li>
+    <li>A ordem de chegada não é garantida. Use <code>atualizado_em</code> para decidir qual
+        versão é a mais recente.</li>
+  </ul>
+</section>
+
+<section id="assinatura">
+  <h2>Validar a assinatura</h2>
+
+  <p>Calcule o HMAC-SHA256 do <strong>corpo bruto</strong> da requisição usando o segredo do
+  webhook e compare com o valor de <code>x-assinatura</code>. Três cuidados:</p>
+  <ul>
+    <li>Use o corpo <strong>exatamente como chegou</strong>, antes de qualquer parse de JSON.
+        Serializar de novo muda os bytes e a assinatura não bate.</li>
+    <li>Compare em <strong>tempo constante</strong>, nunca com <code>==</code>.</li>
+    <li>Rejeite a requisição se a assinatura não bater. Não processe "só para conferir".</li>
+  </ul>
+
+  <h3>Node.js (Express)</h3>
+  <pre><code><span class="k">const</span> crypto = require(<span class="s">'crypto'</span>);
+
+<span class="c">// o corpo precisa chegar cru: express.raw, não express.json</span>
+app.post(<span class="s">'/webhook'</span>, express.raw({ type: <span class="s">'application/json'</span> }), (req, res) => {
+  <span class="k">const</span> esperado = <span class="s">'sha256='</span> + crypto
+    .createHmac(<span class="s">'sha256'</span>, process.env.WEBHOOK_SEGREDO)
+    .update(req.body)
+    .digest(<span class="s">'hex'</span>);
+
+  <span class="k">const</span> recebido = req.get(<span class="s">'x-assinatura'</span>) || <span class="s">''</span>;
+  <span class="k">const</span> a = Buffer.from(esperado), b = Buffer.from(recebido);
+
+  <span class="k">if</span> (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    <span class="k">return</span> res.status(<span class="s">401</span>).send(<span class="s">'assinatura inválida'</span>);
+  }
+
+  <span class="k">const</span> evento = JSON.parse(req.body.toString(<span class="s">'utf8'</span>));
+  res.sendStatus(<span class="s">200</span>);              <span class="c">// responda primeiro</span>
+  processarEmSegundoPlano(evento);   <span class="c">// trabalhe depois</span>
+});</code></pre>
+
+  <h3>Python (Flask)</h3>
+  <pre><code><span class="k">import</span> hmac, hashlib, os
+<span class="k">from</span> flask <span class="k">import</span> request, abort
+
+<span class="k">def</span> valido(corpo: bytes, assinatura: str) -> bool:
+    esperado = <span class="s">'sha256='</span> + hmac.new(
+        os.environ[<span class="s">'WEBHOOK_SEGREDO'</span>].encode(), corpo, hashlib.sha256
+    ).hexdigest()
+    <span class="k">return</span> hmac.compare_digest(esperado, assinatura)
+
+@app.post(<span class="s">'/webhook'</span>)
+<span class="k">def</span> webhook():
+    <span class="k">if not</span> valido(request.get_data(), request.headers.get(<span class="s">'x-assinatura'</span>, <span class="s">''</span>)):
+        abort(<span class="s">401</span>)
+    evento = request.get_json()
+    <span class="c"># enfileire aqui e devolva na hora</span>
+    <span class="k">return</span> <span class="s">''</span>, <span class="s">200</span></code></pre>
+
+  <h3>PHP</h3>
+  <pre><code><span class="k">$corpo</span> = file_get_contents(<span class="s">'php://input'</span>);
+<span class="k">$esperado</span> = <span class="s">'sha256='</span> . hash_hmac(<span class="s">'sha256'</span>, <span class="k">$corpo</span>, getenv(<span class="s">'WEBHOOK_SEGREDO'</span>));
+<span class="k">$recebido</span> = <span class="k">$_SERVER</span>[<span class="s">'HTTP_X_ASSINATURA'</span>] ?? <span class="s">''</span>;
+
+<span class="k">if</span> (!hash_equals(<span class="k">$esperado</span>, <span class="k">$recebido</span>)) {
+    http_response_code(<span class="s">401</span>);
+    exit;
+}
+<span class="k">$evento</span> = json_decode(<span class="k">$corpo</span>, true);
+http_response_code(<span class="s">200</span>);</code></pre>
+
+  <div class="aviso ok">
+    <p>A aba <strong>API</strong> do sistema tem um botão <strong>Enviar teste</strong> que dispara um
+    <code>contato.criado</code> fictício (com <code>"teste": true</code> no corpo) para a sua URL.
+    Use para validar a integração antes de entrar em produção — e ignore esse registro
+    no seu banco.</p>
+  </div>
+</section>
+
+<section id="erros">
+  <h2>Erros e limites</h2>
+
+  <p>Erros vêm sempre com este formato:</p>
+  <pre><code>{ <span class="k">"erro"</span>: { <span class="k">"codigo"</span>: <span class="s">"nao_autenticado"</span>, <span class="k">"mensagem"</span>: <span class="s">"Token ausente ou inválido..."</span> } }</code></pre>
+
+  <table>
+    <thead><tr><th>HTTP</th><th>Código</th><th>O que fazer</th></tr></thead>
+    <tbody>
+      <tr><td>401</td><td><code>nao_autenticado</code></td><td>Token ausente, inválido ou revogado. Confira o cabeçalho <code>Authorization: Bearer ...</code>.</td></tr>
+      <tr><td>404</td><td><code>nao_encontrado</code></td><td>O contato não existe ou foi excluído.</td></tr>
+      <tr><td>404</td><td><code>rota_invalida</code></td><td>Caminho inexistente. Confira a grafia.</td></tr>
+      <tr><td>405</td><td><code>metodo_nao_permitido</code></td><td>A API é somente leitura: use <code>GET</code>.</td></tr>
+      <tr><td>500</td><td><code>erro_interno</code></td><td>Falha do servidor. Tente de novo com espera progressiva; se persistir, avise a administração.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Boas práticas</h3>
+  <ul>
+    <li>Não há limite de chamadas publicado, mas evite varrer a base inteira em ciclo curto.
+        Prefira <strong>webhook</strong> para saber de mudanças e use a consulta com
+        <code>desde</code> apenas para reconciliar.</li>
+    <li>As respostas trazem <code>cache-control: no-store</code>. Não guarde em cache
+        compartilhado — são dados pessoais.</li>
+    <li>Guarde o <code>id</code> do contato como chave estrangeira. Ele é estável e não muda.</li>
+    <li>Tokens são revogáveis a qualquer momento pela administração. Trate 401 como
+        situação esperada, com alerta para o responsável, não como erro fatal silencioso.</li>
+  </ul>
+</section>
+
+</main>
+
+<script>
+// A documentacao acompanha a instalacao: orgao, nome e endereco base vem do
+// proprio servidor, entao a mesma pagina serve qualquer implantacao.
+(async () => {
+  document.querySelectorAll('.base, .base-inline').forEach((el) => {
+    el.textContent = el.textContent.replace('https://SEU-DOMINIO', location.origin);
+  });
+  try {
+    const c = await fetch('/api/config').then((r) => r.json());
+    if (c.orgao) {
+      document.getElementById('orgao').textContent = c.orgao;
+      document.getElementById('gabinete').textContent = c.gabinete || '';
+      document.querySelector('.brasao').alt = c.orgao;
+      document.getElementById('institucional').hidden = false;
+    }
+  } catch { /* documentacao continua legivel sem a configuracao */ }
+})();
+</script>
+</body>
+</html>

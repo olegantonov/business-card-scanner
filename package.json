@@ -1,0 +1,22 @@
+{
+  "name": "cartoes-gabinete",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scanner de cartoes de visita com IA generativa (Google Gemini) - Cloudflare Workers + D1",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute gabinete-cartoes --local --file=./migrations/0001_init.sql",
+    "db:remote": "wrangler d1 execute gabinete-cartoes --remote --file=./migrations/0001_init.sql",
+    "test": "node test/extractor.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  },
+  "allowScripts": {
+    "esbuild@0.17.19": true,
+    "workerd@1.20250718.0": true,
+    "sharp@0.33.5": true
+  }
+}

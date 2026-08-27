@@ -1,0 +1,8 @@
+node_modules/
+.dev.vars
+.wrangler/
+*.log
+
+# Configuracao da instalacao: id do banco, dominio e nome da instituicao.
+# Use wrangler.toml.example como ponto de partida.
+wrangler.toml

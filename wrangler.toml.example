@@ -1,0 +1,51 @@
+# Copie para wrangler.toml e preencha com os dados da sua conta Cloudflare.
+# O wrangler.toml real fica fora do Git: ele carrega o id do seu banco e o
+# seu dominio, que sao especificos da instalacao.
+
+name = "cartoes-visita"
+main = "src/index.js"
+compatibility_date = "2025-07-18"
+
+# Front-end estatico servido pelo proprio Worker
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Banco de dados D1.
+#   npx wrangler d1 create cartoes-visita
+#   (copie o database_id que o comando imprimir)
+[[d1_databases]]
+binding = "DB"
+database_name = "cartoes-visita"
+database_id = "COLE-AQUI-O-ID-DO-SEU-BANCO"
+
+# Dominio proprio. Exige que a zona esteja na mesma conta Cloudflare.
+# Comente este bloco para usar o endereco *.workers.dev.
+# [[routes]]
+# pattern = "contatos.seu-dominio.gov.br"
+# custom_domain = true
+
+# Fotos dos cartoes.
+#   npx wrangler r2 bucket create cartoes-imagens
+[[r2_buckets]]
+binding = "IMAGENS"
+bucket_name = "cartoes-imagens"
+
+# Rede de seguranca da fila: se o Worker for encerrado no meio de uma leitura,
+# o cartao volta para "na_fila" e este gatilho retoma sozinho.
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# Modelo do Gemini. Ver comparacao de custo e velocidade no README.
+GEMINI_MODEL = "gemini-3.5-flash-lite"
+# "auto" | "generate" (endpoint classico) | "interactions" (novo)
+GEMINI_API_MODE = "generate"
+# Faixa institucional no topo. Deixe ORGAO vazio para nao exibi-la.
+# Se usar, troque public/brasao.svg pelo brasao da sua instituicao.
+ORGAO = ""
+NOME_GABINETE = "Gabinete"
+
+# Segredos (NAO ficam neste arquivo):
+#   npx wrangler secret put GEMINI_API_KEY   # obrigatorio
+#   npx wrangler secret put ACCESS_CODE      # codigo mestre de administracao

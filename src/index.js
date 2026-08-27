@@ -5,12 +5,13 @@
 
 import { SETORES, SEGMENTOS, PRIORIDADES } from './gemini.js';
 import {
-  montarContato, atualizar, listar, estatisticas, registrarEvento, paraCsv
+  montarContato, atualizar, listar, listarParaExport, estatisticas, registrarEvento,
+  paraCsv, paraXlsx
 } from './db.js';
 import { identificar, criarUsuario, listarUsuarios, sugerirCodigo } from './auth.js';
 import {
   enfileirar, anexarVerso, processar, varrerFila, listarFila, obterPendente,
-  confirmar, descartar, reprocessar, servirImagem
+  confirmar, descartar, reprocessar, servirImagem, emLote
 } from './fila.js';
 import { rotearPublica, contatoPublico, novoToken, hashToken } from './publica.js';
 import { disparar, EVENTOS, novoSegredo, testar, podarEntregas } from './webhooks.js';
@@ -123,15 +124,60 @@ async function rotaExcluir(env, ctx, id, usuario) {
   return json({ ok: true });
 }
 
-async function rotaCsv(env, url) {
+/**
+ * Planilha de contatos: .xlsx (abre direto) ou .csv (mesmo conteudo, para quem
+ * vai importar em outro sistema). Respeita os filtros da tela e leva todas as
+ * linhas que casarem, nao so a primeira pagina.
+ */
+async function rotaExportar(env, url, formato) {
   const filtros = Object.fromEntries(url.searchParams);
-  const { contatos } = await listar(env.DB, { ...filtros, limit: 500 });
-  const nome = `contatos-${new Date().toISOString().slice(0, 10)}.csv`;
-  return new Response(paraCsv(contatos), {
+  const contatos = await listarParaExport(env.DB, filtros);
+  const dia = new Date().toISOString().slice(0, 10);
+  const nome = `contatos-${dia}.${formato}`;
+
+  const corpo = formato === 'xlsx' ? paraXlsx(contatos, 'Contatos') : paraCsv(contatos);
+  const tipo = formato === 'xlsx'
+    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    : 'text/csv; charset=utf-8';
+
+  return new Response(corpo, {
     headers: {
-      'content-type': 'text/csv; charset=utf-8',
-      'content-disposition': `attachment; filename="${nome}"`
+      'content-type': tipo,
+      'content-disposition': `attachment; filename="${nome}"`,
+      // planilha de dado pessoal nao fica em cache de ninguem
+      'cache-control': 'no-store'
     }
+  });
+}
+
+async function rotaLote(request, env, ctx, usuario) {
+  const corpo = await request.json().catch(() => null);
+  const acao = String(corpo?.acao || '');
+  const ids = Array.isArray(corpo?.ids)
+    ? [...new Set(corpo.ids.map(String).filter((i) => /^[\w-]+$/.test(i)))]
+    : [];
+
+  if (!['confirmar', 'descartar', 'reprocessar'].includes(acao)) {
+    return erro('Ação inválida. Use confirmar, descartar ou reprocessar.');
+  }
+  if (!ids.length) return erro('Selecione ao menos um cartão.');
+  if (ids.length > 50) return erro('Faça em lotes de até 50 cartões.');
+
+  const r = await emLote(env, { acao, ids, usuario: usuario.nome });
+  if (!r.ok) return erro(r.erro);
+
+  for (const contato of r.contatos) {
+    ctx.waitUntil(disparar(env, 'contato.criado', contatoPublico(contato)));
+  }
+  // o lote de releitura so devolveu os cartoes para a fila; a IA roda agora
+  if (acao === 'reprocessar' && r.feitos.length) ctx.waitUntil(varrerFila(env, r.feitos.length));
+
+  return json({
+    ok: true,
+    acao,
+    total: ids.length,
+    feitos: r.feitos.length,
+    falhas: r.falhas
   });
 }
 
@@ -256,6 +302,9 @@ export default {
       if (caminho === '/api/fila' && metodo === 'POST') {
         return await rotaEnfileirar(request, env, ctx, usuario);
       }
+      if (caminho === '/api/fila/lote' && metodo === 'POST') {
+        return await rotaLote(request, env, ctx, usuario);
+      }
       if (caminho === '/api/fila' && metodo === 'GET') {
         // aproveita a visita para retomar o que travou, sem depender so do cron
         ctx.waitUntil(varrerFila(env, 3));
@@ -289,7 +338,8 @@ export default {
       if (caminho === '/api/estatisticas' && metodo === 'GET') {
         return json(await estatisticas(env.DB));
       }
-      if (caminho === '/api/export.csv' && metodo === 'GET') return await rotaCsv(env, url);
+      if (caminho === '/api/export.csv' && metodo === 'GET') return await rotaExportar(env, url, 'csv');
+      if (caminho === '/api/export.xlsx' && metodo === 'GET') return await rotaExportar(env, url, 'xlsx');
       if (imgContato && metodo === 'GET') {
         const c = await env.DB.prepare('SELECT imagem_key, imagem_verso_key FROM contatos WHERE id = ?')
           .bind(imgContato[1]).first();

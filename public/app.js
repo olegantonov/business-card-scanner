@@ -8,7 +8,8 @@ const estado = {
   conferindo: null,   // id do cartao pendente em conferencia
   dados: null,
   enviados: [],       // cartoes mandados nesta sessao
-  fila: { itens: [], contagem: {} }
+  fila: { itens: [], contagem: {} },
+  selecionados: new Set()  // cartoes marcados para acao em lote
 };
 
 const ROTULOS = {
@@ -133,7 +134,7 @@ const irPara = (aba) => document.querySelector(`nav button[data-aba="${aba}"]`).
 const dropzone = $('dropzone');
 dropzone.addEventListener('click', () => $('arquivo').click());
 $('arquivo').addEventListener('change', (e) => {
-  [...e.target.files].forEach(prepararArquivo);
+  enfileirarArquivos(e.target.files);
   e.target.value = '';
 });
 
@@ -143,11 +144,11 @@ $('arquivo').addEventListener('change', (e) => {
 ['dragleave', 'drop'].forEach((ev) => dropzone.addEventListener(ev, (e) => {
   e.preventDefault(); dropzone.classList.remove('sobre');
 }));
-dropzone.addEventListener('drop', (e) => [...(e.dataTransfer.files || [])].forEach(prepararArquivo));
+dropzone.addEventListener('drop', (e) => enfileirarArquivos(e.dataTransfer.files));
 document.addEventListener('paste', (e) => {
-  [...(e.clipboardData?.items || [])]
+  enfileirarArquivos([...(e.clipboardData?.items || [])]
     .filter((i) => i.type.startsWith('image/'))
-    .forEach((i) => prepararArquivo(i.getAsFile()));
+    .map((i) => i.getAsFile()));
 });
 
 /** Reduz a imagem antes de enviar (economiza banda e tokens). */
@@ -182,6 +183,49 @@ async function prepararArquivo(arquivo) {
 }
 
 /**
+ * Envio em lote: os arquivos vao um de cada vez, para nao abrir dezenas de
+ * requisicoes juntas num celular em rede de evento. Da para largar mais
+ * arquivos no meio do caminho - eles entram no fim da fila.
+ */
+const filaEnvio = [];
+let enviandoLote = false;
+let enviadosNoLote = 0;
+
+function enfileirarArquivos(arquivos) {
+  const novos = [...(arquivos || [])].filter(Boolean);
+  if (!novos.length) return;
+  filaEnvio.push(...novos);
+  escoarFilaEnvio();
+}
+
+function progressoEnvio(texto, tipo = 'atencao') {
+  const caixa = $('progressoEnvio');
+  caixa.hidden = !texto;
+  caixa.className = `aviso ${tipo}`;
+  caixa.textContent = texto;
+}
+
+async function escoarFilaEnvio() {
+  if (enviandoLote) return;
+  enviandoLote = true;
+  enviadosNoLote = 0;
+
+  while (filaEnvio.length) {
+    const total = enviadosNoLote + filaEnvio.length;
+    progressoEnvio(`Enviando ${enviadosNoLote + 1} de ${total}…`);
+    await prepararArquivo(filaEnvio.shift());
+    enviadosNoLote++;
+  }
+
+  progressoEnvio(
+    `${enviadosNoLote} cartão(ões) enviado(s). A IA está lendo em segundo plano — acompanhe na Conferência.`,
+    'ok'
+  );
+  enviandoLote = false;
+  atualizarFila();
+}
+
+/**
  * Manda o cartao para a fila e volta na hora. A leitura pela IA acontece no
  * servidor, em segundo plano - quem esta escaneando nao espera nada.
  */
@@ -213,7 +257,8 @@ async function enviarParaFila(dataUrl, versoDataUrl = null) {
     local.erro = e.message;
   }
   desenharEnviados();
-  atualizarFila();
+  // durante um lote de arquivos, a fila e consultada uma vez so, no fim
+  if (!enviandoLote) atualizarFila();
 }
 
 function desenharEnviados() {
@@ -235,7 +280,14 @@ function desenharEnviados() {
   $('enviados').querySelectorAll('.enviado').forEach((el) => {
     el.addEventListener('click', () => { if (el.dataset.id) abrirFichaPendente(el.dataset.id); });
   });
+
+  const prontos = estado.fila.contagem.aguardando || 0;
+  $('btnIrConferir').textContent = prontos
+    ? `Conferir os ${prontos} cartões lidos`
+    : 'Ir para a conferência';
 }
+
+$('btnIrConferir').addEventListener('click', () => irPara('conferencia'));
 
 /* ---------- Camera ao vivo ---------- */
 let fluxoCamera = null;
@@ -368,28 +420,56 @@ async function atualizarFila() {
   if (estado.enviados.length) desenharEnviados();
 }
 
+/**
+ * Por que este cartao nao deveria ser aprovado no lote, sem abrir a ficha.
+ * Devolve string vazia quando a leitura veio limpa.
+ */
+function motivoDeOlhar(item) {
+  const d = item.dados || {};
+  if (d.e_cartao_valido === false) return 'A IA não reconheceu um cartão';
+  if (!String(d.nome || '').trim() && !String(d.empresa || '').trim()) return 'Sem nome nem empresa';
+  if (typeof d.confianca === 'number' && d.confianca < 0.7) return 'Confiança baixa na leitura';
+  return '';
+}
+
+/** So estes podem entrar num lote de aprovacao. */
+const aprovavel = (i) => i.status === 'aguardando' && !motivoDeOlhar(i);
+
 function desenharFila() {
   const c = estado.fila.contagem;
   $('resumoFila').textContent =
     `${c.aguardando || 0} para conferir · ${(c.na_fila || 0) + (c.lendo || 0)} em leitura · ${c.erro || 0} com erro`;
 
+  // uma selecao antiga nao pode sobreviver ao cartao que ja saiu da fila
+  const presentes = new Set(estado.fila.itens.map((i) => i.id));
+  for (const id of [...estado.selecionados]) if (!presentes.has(id)) estado.selecionados.delete(id);
+
   const alvo = $('listaFila');
+  $('barraLote').hidden = !estado.fila.itens.length;
   if (!estado.fila.itens.length) {
     alvo.innerHTML = '<div class="vazio">Nada pendente. Os cartões escaneados aparecem aqui.</div>';
+    atualizarBarraLote();
     return;
   }
 
   alvo.innerHTML = estado.fila.itens.map((i) => {
     const d = i.dados || {};
     const pronto = i.status === 'aguardando';
+    const olhar = pronto ? motivoDeOlhar(i) : '';
+    const contato = [d.celular || d.telefone, d.email].filter(Boolean).join(' · ');
     return `
-      <div class="pendente ${pronto ? 'pronto' : ''}" data-id="${escapar(i.id)}">
+      <div class="pendente ${pronto ? 'pronto' : ''} ${olhar ? 'atencao' : ''}" data-id="${escapar(i.id)}">
+        <label class="marcar" title="Selecionar para o lote">
+          <input type="checkbox" data-marcar="${escapar(i.id)}" ${estado.selecionados.has(i.id) ? 'checked' : ''}>
+        </label>
         <img data-foto="${escapar(i.id)}" alt="">
-        <div class="pendente-info">
+        <div class="pendente-info" data-abrir="${escapar(i.id)}">
           <b>${escapar(d.nome || (pronto ? '(sem nome no cartão)' : 'Aguardando leitura'))}</b>
           <span>${escapar([d.cargo, d.sigla ? `${d.sigla} — ${d.empresa}` : d.empresa].filter(Boolean).join(' · '))}</span>
+          ${contato ? `<span>${escapar(contato)}</span>` : ''}
           <div class="etiquetas">
             <span class="etiqueta st-${escapar(i.status)}">${rotular(i.status)}</span>
+            ${olhar ? `<span class="etiqueta alta">${escapar(olhar)}</span>` : ''}
             ${d.prioridade ? `<span class="etiqueta ${escapar(d.prioridade)}">Prioridade ${rotular(d.prioridade)}</span>` : ''}
             ${i.tem_verso ? '<span class="etiqueta">Frente e verso</span>' : ''}
             ${i.origem_evento ? `<span class="etiqueta">${escapar(i.origem_evento)}</span>` : ''}
@@ -400,15 +480,110 @@ function desenharFila() {
       </div>`;
   }).join('');
 
-  alvo.querySelectorAll('.pendente').forEach((el) => {
-    el.addEventListener('click', () => abrirFichaPendente(el.dataset.id));
+  alvo.querySelectorAll('[data-abrir]').forEach((el) => {
+    el.addEventListener('click', () => abrirFichaPendente(el.dataset.abrir));
+  });
+  alvo.querySelectorAll('[data-marcar]').forEach((caixa) => {
+    caixa.addEventListener('change', () => {
+      if (caixa.checked) estado.selecionados.add(caixa.dataset.marcar);
+      else estado.selecionados.delete(caixa.dataset.marcar);
+      atualizarBarraLote();
+    });
   });
   alvo.querySelectorAll('img[data-foto]').forEach((img) => {
+    img.addEventListener('click', () => abrirFichaPendente(img.dataset.foto));
     carregarImagem(`/api/fila/${img.dataset.foto}/imagem`, img);
   });
+
+  atualizarBarraLote();
 }
 
 $('btnAtualizarFila').addEventListener('click', atualizarFila);
+
+/* ---------- Acoes em lote ---------- */
+const selecionados = () => estado.fila.itens.filter((i) => estado.selecionados.has(i.id));
+
+function atualizarBarraLote() {
+  const marcados = selecionados();
+  const prontos = marcados.filter(aprovavel).length;
+  const total = marcados.length;
+
+  $('rotuloSelecao').textContent = total
+    ? `${total} selecionado(s)${prontos < total ? ` · ${total - prontos} pede(m) conferência na ficha` : ''}`
+    : 'Selecionar os prontos';
+  $('chkTodos').checked = total > 0 && total === estado.fila.itens.filter(aprovavel).length;
+
+  $('btnAprovarLote').disabled = !prontos;
+  $('btnAprovarLote').textContent = prontos ? `Aprovar ${prontos} selecionado(s)` : 'Aprovar selecionados';
+  $('btnDescartarLote').disabled = !total;
+  $('btnReprocessarLote').disabled = !total;
+}
+
+$('chkTodos').addEventListener('change', () => {
+  estado.selecionados.clear();
+  // "todos" quer dizer todos os que dispensam abrir a ficha
+  if ($('chkTodos').checked) estado.fila.itens.filter(aprovavel).forEach((i) => estado.selecionados.add(i.id));
+  desenharFila();
+});
+
+function avisoLote(html) {
+  $('avisoLote').innerHTML = html;
+}
+
+async function acaoEmLote(acao, ids, pergunta) {
+  if (!ids.length || !confirm(pergunta)) return;
+  const botoes = ['btnAprovarLote', 'btnReprocessarLote', 'btnDescartarLote'];
+  botoes.forEach((b) => { $(b).disabled = true; });
+  avisoLote('<div class="aviso atencao">Processando o lote…</div>');
+
+  try {
+    const r = await api('/api/fila/lote', { method: 'POST', body: JSON.stringify({ acao, ids }) });
+    const verbo = { confirmar: 'aprovado(s) e salvo(s)', descartar: 'descartado(s)', reprocessar: 'na fila de leitura' }[acao];
+    const pendencias = r.falhas.length
+      ? `<br>${r.falhas.length} não passaram: ${escapar(r.falhas.map((f) => f.erro).join(' · '))}`
+      : '';
+    avisoLote(`<div class="aviso ${r.falhas.length ? 'atencao' : 'ok'}">${r.feitos} cartão(ões) ${verbo}.${pendencias}</div>`);
+    estado.selecionados.clear();
+  } catch (e) {
+    avisoLote(`<div class="aviso erro">${escapar(e.message)}</div>`);
+  }
+
+  await atualizarFila();
+  // se a fila nao pode ser relida, os botoes nao podem ficar travados
+  atualizarBarraLote();
+  if (abaAtiva() === 'contatos') carregarLista();
+}
+
+$('btnAprovarLote').addEventListener('click', () => {
+  const ids = selecionados().filter(aprovavel).map((i) => i.id);
+  acaoEmLote('confirmar', ids,
+    `Aprovar ${ids.length} cartão(ões) com os dados que a IA leu e gravar como contato?`);
+});
+
+$('btnDescartarLote').addEventListener('click', () => {
+  const ids = selecionados().map((i) => i.id);
+  acaoEmLote('descartar', ids, `Descartar ${ids.length} cartão(ões)? As fotos serão apagadas.`);
+});
+
+$('btnReprocessarLote').addEventListener('click', () => {
+  const ids = selecionados().map((i) => i.id);
+  acaoEmLote('reprocessar', ids, `Mandar a IA ler ${ids.length} cartão(ões) de novo?`);
+});
+
+/* Conferencia encadeada: abre um cartao atras do outro, sem voltar para a lista. */
+function proximoParaConferir(idAtual) {
+  const seguinte = estado.fila.itens
+    .filter((i) => i.status === 'aguardando' || i.status === 'erro')
+    .find((i) => i.id !== idAtual);
+  return seguinte?.id || null;
+}
+
+$('btnConferirUmAUm').addEventListener('click', async () => {
+  await atualizarFila();
+  const primeiro = proximoParaConferir(null);
+  if (!primeiro) { avisoLote('<div class="aviso ok">Nenhum cartão aguardando conferência.</div>'); return; }
+  abrirFichaPendente(primeiro);
+});
 
 /* ---------- Ficha (foto ao lado dos dados) ---------- */
 let giro = 0;
@@ -526,6 +701,15 @@ async function abrirFichaPendente(id) {
     $('btnDescartar').hidden = false;
     $('btnExcluir').hidden = true;
 
+    // conferencia encadeada: com fila cheia, salvar e ja abrir o proximo
+    const restantes = estado.fila.itens.filter((i) => i.status === 'aguardando' || i.status === 'erro');
+    const posicao = restantes.findIndex((i) => i.id === id);
+    $('btnSalvarProximo').hidden = restantes.length < 2;
+    $('posicaoFicha').hidden = restantes.length < 2;
+    $('posicaoFicha').textContent = posicao >= 0
+      ? `Cartão ${posicao + 1} de ${restantes.length} na conferência`
+      : `${restantes.length} cartões na conferência`;
+
     $('btnAddVerso').hidden = item.tem_verso;
     abrirFicha();
     configurarLados(`/api/fila/${id}`, item.tem_verso);
@@ -546,6 +730,8 @@ async function abrirFichaContato(id) {
     $('btnSalvar').textContent = 'Salvar alterações';
     $('btnDescartar').hidden = true;
     $('btnExcluir').hidden = false;
+    $('btnSalvarProximo').hidden = true;
+    $('posicaoFicha').hidden = true;
 
     $('btnAddVerso').hidden = true;
     abrirFicha();
@@ -587,38 +773,61 @@ function lerFormulario() {
   return corpo;
 }
 
-$('formulario').addEventListener('submit', async (e) => {
-  e.preventDefault();
+async function salvarFicha({ seguirParaProximo = false } = {}) {
   const corpo = lerFormulario();
   if (!corpo.nome?.trim() && !corpo.empresa?.trim()) {
     mensagem('Informe pelo menos o nome ou a empresa.', 'erro');
     return;
   }
+  const conferido = estado.conferindo;
   $('btnSalvar').disabled = true;
+  $('btnSalvarProximo').disabled = true;
   try {
-    if (estado.conferindo) {
-      await api(`/api/fila/${estado.conferindo}/confirmar`, { method: 'POST', body: JSON.stringify(corpo) });
+    if (conferido) {
+      await api(`/api/fila/${conferido}/confirmar`, { method: 'POST', body: JSON.stringify(corpo) });
       mensagem('Contato conferido e salvo.', 'ok');
     } else if (estado.editando) {
       await api(`/api/contatos/${estado.editando}`, { method: 'PUT', body: JSON.stringify(corpo) });
       mensagem('Contato atualizado.', 'ok');
     }
     fecharFicha();
-    atualizarFila();
+    await atualizarFila();
     if (abaAtiva() === 'contatos') carregarLista();
+
+    if (seguirParaProximo && conferido) {
+      const proximo = proximoParaConferir(conferido);
+      if (proximo) abrirFichaPendente(proximo);
+      else avisoLote('<div class="aviso ok">Conferência em dia: nenhum cartão restante.</div>');
+    }
   } catch (err) {
     mensagem(err.message, 'erro');
   } finally {
     $('btnSalvar').disabled = false;
+    $('btnSalvarProximo').disabled = false;
   }
+}
+
+$('formulario').addEventListener('submit', (e) => {
+  e.preventDefault();
+  salvarFicha();
 });
+
+$('btnSalvarProximo').addEventListener('click', () => salvarFicha({ seguirParaProximo: true }));
 
 $('btnDescartar').addEventListener('click', async () => {
   if (!estado.conferindo || !confirm('Descartar este cartão? A foto será apagada.')) return;
-  await api(`/api/fila/${estado.conferindo}`, { method: 'DELETE' });
+  const descartado = estado.conferindo;
+  const encadeado = !$('btnSalvarProximo').hidden;
+  await api(`/api/fila/${descartado}`, { method: 'DELETE' });
   mensagem('Cartão descartado.', 'ok');
   fecharFicha();
-  atualizarFila();
+  await atualizarFila();
+
+  // no modo um a um, descartar tambem leva para o proximo cartao
+  if (encadeado) {
+    const proximo = proximoParaConferir(descartado);
+    if (proximo) abrirFichaPendente(proximo);
+  }
 });
 
 $('btnExcluir').addEventListener('click', async () => {
@@ -663,22 +872,35 @@ function filtrosAtuais() {
   return p;
 }
 
-$('btnCsv').addEventListener('click', async () => {
+/**
+ * Baixa a planilha com os filtros da tela. Vai por fetch, e nao por link, porque
+ * a rota exige o cabecalho de acesso - o mesmo motivo das fotos.
+ */
+async function baixarPlanilha(formato, botao) {
+  const rotulo = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = 'Gerando…';
   try {
-    const resp = await fetch(`/api/export.csv?${filtrosAtuais()}`, { headers: cabecalhos() });
-    if (!resp.ok) throw new Error('Falha ao exportar.');
+    const resp = await fetch(`/api/export.${formato}?${filtrosAtuais()}`, { headers: cabecalhos() });
+    if (!resp.ok) throw new Error('Não consegui gerar a planilha.');
     const url = URL.createObjectURL(await resp.blob());
     const a = document.createElement('a');
     a.href = url;
-    a.download = `contatos-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `contatos-${new Date().toISOString().slice(0, 10)}.${formato}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   } catch (e) {
     mensagem(e.message, 'erro');
+  } finally {
+    botao.disabled = false;
+    botao.textContent = rotulo;
   }
-});
+}
+
+$('btnPlanilha').addEventListener('click', () => baixarPlanilha('xlsx', $('btnPlanilha')));
+$('btnCsv').addEventListener('click', () => baixarPlanilha('csv', $('btnCsv')));
 
 async function carregarLista() {
   const lista = $('lista');

@@ -18,7 +18,8 @@ src/fila.js      fila, leitura em segundo plano, frente/verso, R2
 src/publica.js   API /v1 somente leitura e tokens
 src/webhooks.js  disparo assinado em HMAC-SHA256
 src/gemini.js    prompt, schema JSON e chamada à API do Google
-src/db.js        gravação, busca, duplicados, estatísticas, CSV
+src/planilha.js  gerador de .xlsx à mão (ZIP + XML), sem dependência
+src/db.js        gravação, busca, duplicados, estatísticas, exportação
 public/          interface em HTML/CSS/JS puro + docs.html (servido em /docs)
 migrations/      SQL numerado, aplicado manualmente pelo wrangler
 ```
@@ -76,6 +77,13 @@ para responder.
 - **Webhook exige URL `https`.** Dado pessoal não trafega em HTTP.
 - **Nada entra no banco sem conferência humana.** O caminho é sempre
   fila → conferência → contato. Não crie atalho da IA direto para `contatos`.
+  A aprovação em lote (`/api/fila/lote`) **não é exceção**: quem aprova está
+  olhando na lista a foto e os campos lidos de cada cartão marcado. Por isso o
+  servidor recusa no lote o cartão que a IA marcou `e_cartao_valido: false` ou
+  que ficou sem nome e sem empresa — esse exige abrir a ficha. Se acrescentar
+  critério de risco novo, aplique nos **dois** lados: em `motivoDeOlhar()` no
+  `public/app.js` (para a seleção não incluir) e em `emLote()` no `src/fila.js`
+  (para a API não aceitar). Só o front-end não vale como trava.
 - **Os dados são pessoais de terceiros** (LGPD). Ao mexer em exportação, log ou
   qualquer saída nova, pense antes em quem passa a enxergar o quê. Respostas da
   API pública levam `cache-control: no-store`.
@@ -98,9 +106,16 @@ extração do JSON nos dois formatos de resposta do Google, normalização de ca
 chave de busca sem acentos e geração do CSV. Não há framework: um helper `teste()`
 de três linhas e `node:assert/strict`.
 
-Ao mexer em `src/gemini.js` ou `src/db.js`, acrescente caso de teste. Para o
-restante (fila, auth, webhooks), o caminho é exercitar a API publicada — não monte
-mock de D1 nem de R2.
+Ao mexer em `src/gemini.js`, `src/db.js` ou `src/planilha.js`, acrescente caso de
+teste. Para o restante (fila, auth, webhooks), o caminho é exercitar a API
+publicada — não monte mock de D1 nem de R2.
+
+O `.xlsx` é gerado à mão: um byte errado no ZIP e o Excel recusa o arquivo
+inteiro, sem dizer onde. Os testes cobrem o CRC32 contra o vetor conhecido, a
+numeração das colunas depois de Z e a presença das seis peças obrigatórias do
+pacote. Para conferir de verdade depois de mexer, gere um arquivo e abra com
+`python -c "import openpyxl; openpyxl.load_workbook('teste.xlsx')"` — o openpyxl
+é tão exigente quanto o Excel e reclama do que estiver fora do esquema.
 
 ## Fila: máquina de estados
 

@@ -15,20 +15,23 @@ e o plano gratuito atende com folga o volume de um gabinete ou de uma assessoria
 
 ## O que ele faz
 
-- 📷 Foto pela câmera ao vivo (a câmera fica aberta: fotografe um cartão atrás do outro), upload de vários arquivos, arrastar-soltar ou colar (Ctrl+V)
-- ⚡ **Envio instantâneo**: o cartão entra numa fila e volta em ~1,5s. A leitura pela IA acontece em segundo plano, sem prender quem está escaneando
-- 🔄 **Frente e verso**: fotografe os dois lados e a IA junta tudo num contato só, sem duplicar
-- 🏛️ **Siglas separadas do nome**: "CNPq" e "Conselho Nacional de Desenvolvimento Científico e Tecnológico" viram dois campos, e a busca acha pelos dois
-- 🤖 Leitura por IA: nome, cargo, empresa, sigla, telefones, e-mails, site, endereço e redes sociais
-- 🏷️ Classificação automática: setor, segmento, prioridade para o gabinete, temas de interesse e um resumo de uma linha
-- ✅ **Aba de conferência**: a foto do cartão fica lado a lado com o que a IA leu, para comparar campo por campo antes de salvar
-- 🔁 Aviso de contato duplicado (mesmo e-mail, mesmo telefone ou mesmo nome+empresa), checado na hora da conferência
-- 🔑 Cada pessoa da equipe entra com o **próprio código** — é ele que identifica quem cadastrou cada contato
-- 🔎 Busca (ignora acentos) e filtros por setor, segmento, prioridade e situação
-- 📊 Painel com totais por setor, prioridade e segmento
-- 📤 Exportação CSV (abre direto no Excel)
-- 🔌 **API de consulta** (somente leitura) e **webhooks** assinados para outros sistemas — documentação em `/docs`
-- 🎫 Campos de origem: evento e local, preenchidos uma vez e reaproveitados no mesmo evento
+- Foto pela câmera ao vivo (a câmera fica aberta: fotografe um cartão atrás do outro), upload de vários arquivos, arrastar-soltar ou colar (Ctrl+V)
+- **Envio instantâneo**: o cartão entra numa fila e volta em ~1,5s. A leitura pela IA acontece em segundo plano, sem prender quem está escaneando
+- **Envio em lote**: escolha vários arquivos de uma vez e eles sobem em sequência, com o andamento na tela
+- **Frente e verso**: fotografe os dois lados e a IA junta tudo num contato só, sem duplicar
+- **Siglas separadas do nome**: "CNPq" e "Conselho Nacional de Desenvolvimento Científico e Tecnológico" viram dois campos, e a busca acha pelos dois
+- Leitura por IA: nome, cargo, empresa, sigla, telefones, e-mails, site, endereço e redes sociais
+- Classificação automática: setor, segmento, prioridade para o gabinete, temas de interesse e um resumo de uma linha
+- **Aba de conferência**: a foto do cartão fica lado a lado com o que a IA leu, para comparar campo por campo antes de salvar
+- **Conferência um a um**: salvou, já abre o próximo cartão da fila, sem voltar para a lista
+- **Aprovação em lote**: marque os cartões cuja leitura veio limpa e grave todos de uma vez; descartar e mandar reler também funcionam em lote
+- Aviso de contato duplicado (mesmo e-mail, mesmo telefone ou mesmo nome+empresa), checado na hora da conferência
+- Cada pessoa da equipe entra com o **próprio código** — é ele que identifica quem cadastrou cada contato
+- Busca (ignora acentos) e filtros por setor, segmento, prioridade e situação
+- Painel com totais por setor, prioridade e segmento
+- **Planilha de contatos em `.xlsx`** (abre no Excel com um clique duplo) ou em CSV, respeitando os filtros da tela
+- **API de consulta** (somente leitura) e **webhooks** assinados para outros sistemas — documentação em `/docs`
+- Campos de origem: evento e local, preenchidos uma vez e reaproveitados no mesmo evento
 
 ## Como funciona
 
@@ -183,13 +186,63 @@ cartoes-gabinete/
 │   ├── publica.js              API /v1 de consulta e tokens de leitura
 │   ├── webhooks.js             disparo assinado em HMAC-SHA256
 │   ├── gemini.js               prompt, esquema JSON e chamada à API do Google
-│   └── db.js                   gravação, busca, duplicados, estatísticas, CSV
+│   ├── planilha.js             gerador de .xlsx (ZIP + XML, sem dependência)
+│   └── db.js                   gravação, busca, duplicados, estatísticas, exportação
 ├── public/                     interface (HTML, CSS, JS puro — sem framework)
 │   ├── brasao.svg              Brasão da República (variante colorida chapada)
 │   └── docs.html               documentação da API, servida em /docs
 ├── test/extractor.test.js      testes das funções puras (npm test)
 └── exemplo/cartao-exemplo.png  cartão fictício para testar
 ```
+
+## Conferência: um a um ou em lote
+
+Nada entra na base de contatos sem alguém aprovar. O que muda é o ritmo:
+
+- **Um a um** — botão *Conferir um a um*. Abre a ficha com a foto ao lado dos
+  campos; *Salvar e ir ao próximo* grava e já traz o cartão seguinte, sem passar
+  pela lista. Descartar também avança. O contador mostra "cartão 3 de 9".
+- **Em lote** — cada cartão da lista tem uma caixa de seleção. *Selecionar os
+  prontos* marca de uma vez todos os que a IA leu sem ressalva, e *Aprovar
+  selecionados* grava todos com os dados lidos. *Descartar* e *Ler de novo*
+  valem para qualquer seleção.
+
+A lista mostra nome, cargo, empresa, telefone e e-mail de cada cartão — é o que
+se confere antes de aprovar em lote. Um cartão fica **fora** do lote de aprovação
+quando merece um olhar na ficha, e a lista diz por quê:
+
+| Aviso | Quando aparece |
+|---|---|
+| A IA não reconheceu um cartão | a leitura voltou com `e_cartao_valido: false` |
+| Sem nome nem empresa | não sobrou identificação para gravar |
+| Confiança baixa na leitura | a IA respondeu `confianca` abaixo de 0,7 |
+
+Dá para marcar esses cartões à mão para descartar ou reler em lote; só a
+**aprovação** exige abrir a ficha. O servidor recusa de novo pelo mesmo critério,
+então não adianta contornar pela API.
+
+## Planilha de contatos
+
+Na aba Contatos, *Baixar planilha (Excel)* gera um `.xlsx` de verdade — abre com
+clique duplo, sem assistente de importação, com a primeira linha congelada e
+filtro automático. *Baixar CSV* entrega o mesmo conteúdo com BOM e separador `;`,
+para quem vai importar em outro sistema.
+
+Os dois respeitam os filtros da tela: se a busca estiver preenchida, só desce o
+que está aparecendo. Limpe a busca e os filtros para levar todos. O limite é de
+5.000 linhas por arquivo.
+
+As colunas saem com título legível ("Empresa / órgão", "Celular / WhatsApp") e a
+classificação vem traduzida — `terceiro_setor` chega como "Terceiro setor". Tudo
+é gravado como texto, de propósito: telefone e CEP perderiam o zero à esquerda se
+o Excel tratasse como número.
+
+O `.xlsx` é montado à mão em `src/planilha.js` (um ZIP com alguns XML dentro),
+para não trazer dependência de runtime para o Worker.
+
+> **Lembre-se de que é dado pessoal de terceiros.** A planilha sai do sistema com
+> tudo em claro, inclusive telefone e e-mail. Ela vai com `cache-control: no-store`,
+> mas o arquivo baixado é responsabilidade de quem baixou.
 
 ## Acesso da equipe
 
@@ -225,12 +278,14 @@ da pessoa. O nome de quem registrou sai do próprio código.
 | POST | `/api/fila/:id/verso` | Anexa o verso a um cartão já na fila e manda reler |
 | GET | `/api/fila/:id/imagem/verso` | Foto do verso |
 | POST | `/api/fila/:id/reprocessar` | Manda a IA ler de novo |
+| POST | `/api/fila/lote` | Recebe `{ acao, ids }` e aprova, descarta ou remanda para leitura até 50 cartões |
 | DELETE | `/api/fila/:id` | Descarta o cartão e apaga a foto |
 | GET | `/api/contatos` | Lista com `q`, `setor`, `segmento`, `prioridade`, `status`, `limit`, `offset` |
 | GET/PUT/DELETE | `/api/contatos/:id` | Lê, edita ou exclui um contato |
 | GET | `/api/contatos/:id/imagem` | Foto do cartão que originou o contato |
 | GET | `/api/estatisticas` | Números do painel |
-| GET | `/api/export.csv` | Exporta a lista filtrada |
+| GET | `/api/export.xlsx` | Planilha do Excel com a lista filtrada (até 5.000 linhas) |
+| GET | `/api/export.csv` | O mesmo conteúdo em CSV, com BOM e separador `;` |
 | GET/POST | `/api/usuarios` | Lista/cadastra a equipe — **só administração** |
 | DELETE | `/api/usuarios/:id` | Desativa o acesso de alguém — **só administração** |
 | GET/POST | `/api/tokens` | Tokens da API de consulta — **só administração** |

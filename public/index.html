@@ -57,15 +57,19 @@
         Toque para escolher um ou vários arquivos, arrastar ou colar (Ctrl+V)
       </div>
       <div class="botoes" id="botoesCaptura">
-        <button type="button" class="primario" id="btnCamera">📷 Usar a câmera</button>
+        <button type="button" class="primario" id="btnCamera">Usar a câmera</button>
       </div>
       <input type="file" id="arquivo" accept="image/*" multiple hidden>
       <p class="dica">O cartão é enviado na hora e a leitura pela IA acontece em segundo plano. Não precisa esperar: fotografe o próximo.</p>
+      <div id="progressoEnvio" class="aviso atencao" hidden></div>
     </div>
 
     <div class="cartao" id="areaEnviados" hidden>
       <h3>Enviados agora</h3>
       <div id="enviados"></div>
+      <div class="botoes">
+        <button type="button" class="primario" id="btnIrConferir">Conferir os cartões lidos</button>
+      </div>
     </div>
   </section>
 
@@ -73,12 +77,27 @@
   <section id="aba-conferencia" hidden>
     <div class="cartao">
       <h2 style="margin:0 0 6px">Conferência</h2>
-      <p class="dica" style="margin:0">Compare a foto do cartão com o que a IA leu, corrija o que precisar e salve.</p>
+      <p class="dica" style="margin:0">Confira um a um com a foto ao lado dos campos, ou marque vários e aprove de uma vez. Cartões com aviso pedem uma olhada na ficha antes.</p>
       <div class="botoes">
+        <button class="primario" id="btnConferirUmAUm">Conferir um a um</button>
         <button class="secundario" id="btnAtualizarFila">Atualizar</button>
       </div>
       <p id="resumoFila" class="dica"></p>
     </div>
+
+    <div class="lote" id="barraLote" hidden>
+      <label class="alternador">
+        <input type="checkbox" id="chkTodos">
+        <span id="rotuloSelecao">Selecionar os prontos</span>
+      </label>
+      <div class="botoes">
+        <button class="primario" id="btnAprovarLote" disabled>Aprovar selecionados</button>
+        <button class="secundario" id="btnReprocessarLote" disabled>Ler de novo</button>
+        <button class="perigo" id="btnDescartarLote" disabled>Descartar</button>
+      </div>
+    </div>
+    <div id="avisoLote"></div>
+
     <div id="listaFila"></div>
   </section>
 
@@ -100,9 +119,11 @@
         </div>
       </div>
       <div class="botoes">
-        <button class="secundario" id="btnCsv">Exportar CSV</button>
+        <button class="primario" id="btnPlanilha">Baixar planilha (Excel)</button>
+        <button class="secundario" id="btnCsv">Baixar CSV</button>
         <button class="secundario" id="btnAtualizar">Atualizar</button>
       </div>
+      <p class="dica">A planilha sai com os contatos que estiverem passando pelos filtros acima — limpe a busca para levar todos.</p>
     </div>
     <p id="resumoLista" class="dica"></p>
     <div id="lista"></div>
@@ -195,6 +216,7 @@
     </div>
 
     <form class="ficha-dados" id="formulario">
+      <p id="posicaoFicha" class="dica" hidden></p>
       <div id="avisoIA"></div>
 
       <h3>Identificação</h3>
@@ -262,6 +284,7 @@
 
       <div class="botoes ficha-acoes">
         <button type="submit" class="primario" id="btnSalvar">Salvar contato</button>
+        <button type="button" class="secundario" id="btnSalvarProximo" hidden>Salvar e ir ao próximo</button>
         <button type="button" class="secundario" id="btnFecharFicha">Fechar</button>
         <button type="button" class="perigo" id="btnDescartar" hidden>Descartar cartão</button>
         <button type="button" class="perigo" id="btnExcluir" hidden>Excluir contato</button>

@@ -250,6 +250,64 @@ export async function confirmar(env, id, corpo, usuario) {
   return { ok: true, contato };
 }
 
+/**
+ * Aprova, descarta ou remanda para leitura varios cartoes de uma vez.
+ *
+ * A conferencia humana continua acontecendo: quem aprova em lote esta olhando,
+ * na lista, a foto e os campos que a IA leu de cada cartao selecionado. O que
+ * NAO passa por aqui e o cartao que a propria IA marcou como "isto nao e um
+ * cartao de visita" - esse exige abrir a ficha, justamente porque o resumo da
+ * lista nao basta para decidir.
+ */
+export async function emLote(env, { acao, ids, usuario }) {
+  const feitos = [];
+  const falhas = [];
+  const contatos = [];
+
+  for (const id of ids) {
+    try {
+      if (acao === 'confirmar') {
+        const p = await env.DB.prepare('SELECT * FROM pendentes WHERE id = ?').bind(id).first();
+        if (!p) { falhas.push({ id, erro: 'Cartão não encontrado na fila.' }); continue; }
+        if (p.status !== 'aguardando') {
+          falhas.push({ id, erro: 'O cartão ainda não terminou de ser lido.' });
+          continue;
+        }
+        let dados = null;
+        try { dados = p.dados_json ? JSON.parse(p.dados_json) : null; } catch { /* trata abaixo */ }
+        if (!dados) { falhas.push({ id, erro: 'Sem leitura da IA para aprovar.' }); continue; }
+        if (dados.e_cartao_valido === false) {
+          falhas.push({ id, erro: 'A IA não reconheceu um cartão de visita — abra a ficha e confira.' });
+          continue;
+        }
+        if (!String(dados.nome || '').trim() && !String(dados.empresa || '').trim()) {
+          falhas.push({ id, erro: 'Sem nome nem empresa — abra a ficha e complete.' });
+          continue;
+        }
+        const r = await confirmar(env, id, dados, usuario);
+        if (!r.ok) { falhas.push({ id, erro: r.erro }); continue; }
+        contatos.push(r.contato);
+        feitos.push(id);
+      } else if (acao === 'descartar') {
+        const r = await descartar(env, id, usuario);
+        if (!r.ok) { falhas.push({ id, erro: r.erro }); continue; }
+        feitos.push(id);
+      } else if (acao === 'reprocessar') {
+        // so devolve para a fila: ler N cartoes aqui dentro seguraria a resposta
+        // por minutos. Quem chama dispara a varredura depois de responder.
+        await reenfileirar(env, id);
+        feitos.push(id);
+      } else {
+        return { ok: false, erro: 'Ação de lote desconhecida.' };
+      }
+    } catch (e) {
+      falhas.push({ id, erro: String(e?.message || e).slice(0, 200) });
+    }
+  }
+
+  return { ok: true, acao, feitos, falhas, contatos };
+}
+
 /** Descarta o cartao e apaga a foto - nada de dado pessoal sobrando a toa. */
 export async function descartar(env, id, usuario) {
   const p = await env.DB.prepare('SELECT * FROM pendentes WHERE id = ?').bind(id).first();
@@ -267,11 +325,16 @@ export async function descartar(env, id, usuario) {
   return { ok: true };
 }
 
-/** Manda ler de novo um cartao que deu erro. */
-export async function reprocessar(env, id) {
+/** Devolve o cartao para a fila, sem chamar a IA agora. */
+export async function reenfileirar(env, id) {
   await env.DB.prepare(
     `UPDATE pendentes SET status = 'na_fila', tentativas = 0, erro = NULL, atualizado_em = ? WHERE id = ?`
   ).bind(agora(), id).run();
+}
+
+/** Manda ler de novo um cartao que deu erro. */
+export async function reprocessar(env, id) {
+  await reenfileirar(env, id);
   return processar(env, id);
 }
 

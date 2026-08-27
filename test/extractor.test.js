@@ -1,7 +1,8 @@
 /** Testes das funcoes puras (sem rede e sem banco): node test/extractor.test.js */
 import assert from 'node:assert/strict';
 import { extrairJson, normalizar } from '../src/gemini.js';
-import { chaveBusca, paraCsv, montarContato, normalizarBusca } from '../src/db.js';
+import { chaveBusca, paraCsv, paraXlsx, linhaExport, COLUNAS_EXPORT, montarContato, normalizarBusca } from '../src/db.js';
+import { letraColuna, crc32 } from '../src/planilha.js';
 
 globalThis.crypto ??= (await import('node:crypto')).webcrypto;
 
@@ -84,6 +85,67 @@ teste('CSV escapa aspas e usa BOM', () => {
   assert.ok(csv.startsWith('﻿'));
   assert.ok(csv.includes('"Ana ""A"""'));
   assert.ok(csv.includes('"X;Y"'));
+});
+
+teste('CSV sai com titulos legiveis, nao com nome de coluna do banco', () => {
+  const [cabecalho] = paraCsv([]).split('\r\n');
+  assert.ok(cabecalho.includes('"Empresa / órgão"'));
+  assert.ok(cabecalho.includes('"Celular / WhatsApp"'));
+  assert.ok(!cabecalho.includes('resumo_ia'));
+});
+
+/* --- exportacao --- */
+teste('linha de exportacao traduz classificacao e formata datas', () => {
+  const linha = linhaExport({
+    nome: 'Ana', setor: 'terceiro_setor', segmento: 'ciencia_pesquisa',
+    prioridade: 'alta', status: 'novo',
+    data_captura: '2026-08-27', criado_em: '2026-08-27T14:32:10.000Z'
+  });
+  const valor = (campo) => linha[COLUNAS_EXPORT.findIndex(([c]) => c === campo)];
+  assert.equal(valor('setor'), 'Terceiro setor');
+  assert.equal(valor('segmento'), 'Ciência e pesquisa');
+  assert.equal(valor('prioridade'), 'Alta');
+  assert.equal(valor('data_captura'), '27/08/2026');
+  assert.equal(valor('criado_em'), '27/08/2026 14:32');
+});
+
+teste('linha de exportacao nao quebra com campo faltando', () => {
+  const linha = linhaExport({ nome: 'Ana' });
+  assert.equal(linha.length, COLUNAS_EXPORT.length);
+  assert.ok(linha.every((v) => typeof v === 'string'));
+});
+
+/* --- planilha .xlsx --- */
+teste('crc32 bate com o valor conhecido de "123456789"', () => {
+  assert.equal(crc32(new TextEncoder().encode('123456789')), 0xcbf43926);
+});
+
+teste('letraColuna cobre a virada de A para AA', () => {
+  assert.equal(letraColuna(0), 'A');
+  assert.equal(letraColuna(25), 'Z');
+  assert.equal(letraColuna(26), 'AA');
+  assert.equal(letraColuna(51), 'AZ');
+  assert.equal(letraColuna(52), 'BA');
+});
+
+teste('xlsx e um ZIP com as pecas que o Excel exige', () => {
+  const bytes = paraXlsx([{ nome: 'Ana & Cia <SP>', empresa: 'Órgão' }]);
+  assert.ok(bytes instanceof Uint8Array);
+  // assinatura "PK\x03\x04" do primeiro arquivo local
+  assert.deepEqual([...bytes.slice(0, 4)], [0x50, 0x4b, 0x03, 0x04]);
+  const texto = new TextDecoder().decode(bytes);
+  for (const parte of ['[Content_Types].xml', 'xl/workbook.xml', 'xl/worksheets/sheet1.xml', 'xl/styles.xml']) {
+    assert.ok(texto.includes(parte), `falta ${parte}`);
+  }
+  // o conteudo vai em texto puro (entradas armazenadas), da para conferir aqui
+  assert.ok(texto.includes('Ana &amp; Cia &lt;SP&gt;'));
+  assert.ok(texto.includes('Empresa / órgão'));
+});
+
+teste('xlsx descarta caractere de controle que o OCR devolve', () => {
+  const bytes = paraXlsx([{ nome: `Ana${String.fromCharCode(7)}` }]);
+  const texto = new TextDecoder().decode(bytes);
+  assert.ok(texto.includes('<t xml:space="preserve">Ana</t>'));
 });
 
 console.log(`\n${ok} testes passaram.`);
